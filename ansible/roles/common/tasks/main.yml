@@ -27,8 +27,6 @@
     - "{{ options_edge_home }}/deploy"
     - "{{ options_edge_home }}/config"
     - "{{ options_edge_home }}/data"
-    - "{{ options_edge_home }}/data/docker"
-    - "{{ options_edge_home }}/data/k3s"
     - "{{ options_edge_home }}/data/kafka-streams"
     - "{{ options_edge_home }}/logs"
     - "{{ options_edge_home }}/logs/infra"

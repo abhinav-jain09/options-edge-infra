@@ -19,12 +19,12 @@ Default dev inventory:
 abhinav@192.168.100.252
 ```
 
-Sudo password must be stored in Jenkins as a Secret Text credential. Do not commit passwords to this repo.
+The remote host currently escalates with `su`, not `sudo`. The become password must be stored in Jenkins as a Secret Text credential. Do not commit passwords to this repo.
 
 Default Jenkins credential id:
 
 ```text
-options-edge-remote-sudo-password
+options-edge-remote-become-password
 ```
 
 ## Safety Rule

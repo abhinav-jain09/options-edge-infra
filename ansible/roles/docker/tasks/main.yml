@@ -24,17 +24,26 @@
     - current_docker_root.stdout != docker_data_root
     - not (docker_configure_data_root | bool)
 
-- name: Install Docker package when available from configured repositories
+- name: Install Docker package when Docker command is missing
   ansible.builtin.package:
     name: docker
     state: present
   ignore_errors: true
+  when: docker_command.rc != 0
 
 - name: Ensure Docker config directory exists
   ansible.builtin.file:
     path: /etc/docker
     state: directory
     mode: '0755'
+
+- name: Ensure Docker data-root directory exists
+  ansible.builtin.file:
+    path: "{{ docker_data_root }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0711'
 
 - name: Configure Docker data-root under /home/options-edge
   ansible.builtin.copy:

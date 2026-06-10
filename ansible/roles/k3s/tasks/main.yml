@@ -5,6 +5,14 @@
   changed_when: false
   failed_when: false
 
+- name: Ensure k3s data directory exists
+  ansible.builtin.file:
+    path: "{{ k3s_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
 - name: Install k3s with data dir under /home/options-edge
   ansible.builtin.shell: |
     set -euo pipefail
