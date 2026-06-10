@@ -1,4 +1,43 @@
 ---
-- name: common role placeholder
-  ansible.builtin.debug:
-    msg: "common role will be implemented here. All OptionsEdge data must stay under /home/options-edge."
+- name: Validate OptionsEdge home is under /home
+  ansible.builtin.assert:
+    that:
+      - options_edge_home == '/home/options-edge'
+    fail_msg: 'OptionsEdge home must be /home/options-edge'
+
+- name: Ensure required base packages are installed
+  ansible.builtin.package:
+    name:
+      - curl
+      - git
+      - jq
+      - ca-certificates
+    state: present
+
+- name: Create OptionsEdge directory layout
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ options_edge_owner }}"
+    group: "{{ options_edge_group }}"
+    mode: '0775'
+  loop:
+    - "{{ options_edge_home }}"
+    - "{{ options_edge_home }}/repos"
+    - "{{ options_edge_home }}/deploy"
+    - "{{ options_edge_home }}/config"
+    - "{{ options_edge_home }}/data"
+    - "{{ options_edge_home }}/data/docker"
+    - "{{ options_edge_home }}/data/k3s"
+    - "{{ options_edge_home }}/data/kafka-streams"
+    - "{{ options_edge_home }}/logs"
+    - "{{ options_edge_home }}/logs/infra"
+    - "{{ options_edge_home }}/backups"
+    - "{{ options_edge_home }}/scripts"
+    - "{{ options_edge_home }}/tmp"
+
+- name: Ensure no root OptionsEdge directory exists
+  ansible.builtin.stat:
+    path: /root/options-edge
+  register: root_options_edge
+  failed_when: root_options_edge.stat.exists

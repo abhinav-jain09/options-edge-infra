@@ -1,4 +1,4 @@
 ---
-- name: observability role placeholder
+- name: Observability role placeholder
   ansible.builtin.debug:
-    msg: "observability role will be implemented here. All OptionsEdge data must stay under /home/options-edge."
+    msg: "Prometheus/Grafana manifests will be managed from options-edge-deploy after k3s is ready."

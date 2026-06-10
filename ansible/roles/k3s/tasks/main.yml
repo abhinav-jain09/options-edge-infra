@@ -1,4 +1,35 @@
 ---
-- name: k3s role placeholder
-  ansible.builtin.debug:
-    msg: "k3s role will be implemented here. All OptionsEdge data must stay under /home/options-edge."
+- name: Check whether k3s is installed
+  ansible.builtin.command: command -v k3s
+  register: k3s_command
+  changed_when: false
+  failed_when: false
+
+- name: Install k3s with data dir under /home/options-edge
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server --data-dir {{ k3s_data_dir }} --write-kubeconfig {{ kubeconfig_path }} --write-kubeconfig-mode 600" sh -
+  args:
+    executable: /bin/bash
+  when: k3s_command.rc != 0
+
+- name: Ensure k3s service is enabled and started
+  ansible.builtin.service:
+    name: k3s
+    enabled: true
+    state: started
+
+- name: Wait for Kubernetes API
+  ansible.builtin.command: kubectl --kubeconfig {{ kubeconfig_path }} get nodes
+  register: kube_nodes
+  changed_when: false
+  retries: 30
+  delay: 5
+  until: kube_nodes.rc == 0
+
+- name: Set kubeconfig ownership
+  ansible.builtin.file:
+    path: "{{ kubeconfig_path }}"
+    owner: "{{ options_edge_owner }}"
+    group: "{{ options_edge_group }}"
+    mode: '0600'

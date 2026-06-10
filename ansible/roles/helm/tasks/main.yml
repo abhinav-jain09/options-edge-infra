@@ -1,4 +1,18 @@
 ---
-- name: helm role placeholder
-  ansible.builtin.debug:
-    msg: "helm role will be implemented here. All OptionsEdge data must stay under /home/options-edge."
+- name: Check whether Helm is installed
+  ansible.builtin.command: command -v helm
+  register: helm_command
+  changed_when: false
+  failed_when: false
+
+- name: Install Helm
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+  args:
+    executable: /bin/bash
+  when: helm_command.rc != 0
+
+- name: Verify Helm
+  ansible.builtin.command: helm version --short
+  changed_when: false

@@ -4,6 +4,12 @@
   become: true
   vars:
     options_edge_home: /home/options-edge
+    options_edge_owner: abhinav
+    options_edge_group: abhinav
+    docker_data_root: /home/options-edge/data/docker
+    k3s_data_dir: /home/options-edge/data/k3s
+    kubeconfig_path: /home/options-edge/config/kubeconfig
+    docker_configure_data_root: false
   roles:
     - common
     - docker

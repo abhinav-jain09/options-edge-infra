@@ -2,9 +2,50 @@
 - name: Verify OptionsEdge remote server
   hosts: options_edge
   become: true
+  vars:
+    options_edge_home: /home/options-edge
+    docker_data_root: /home/options-edge/data/docker
+    k3s_data_dir: /home/options-edge/data/k3s
+    kubeconfig_path: /home/options-edge/config/kubeconfig
   tasks:
     - name: Verify app home exists
       ansible.builtin.stat:
-        path: /home/options-edge
+        path: "{{ options_edge_home }}"
       register: app_home
       failed_when: not app_home.stat.exists
+
+    - name: Verify Docker is installed
+      ansible.builtin.command: docker --version
+      changed_when: false
+
+    - name: Verify Docker data root
+      ansible.builtin.command: docker info --format '{{ "{{" }}.DockerRootDir{{ "}}" }}'
+      register: docker_root
+      changed_when: false
+      failed_when: docker_root.stdout != docker_data_root
+
+    - name: Verify k3s service is active
+      ansible.builtin.command: systemctl is-active k3s
+      register: k3s_active
+      changed_when: false
+      failed_when: k3s_active.stdout != 'active'
+
+    - name: Verify kubeconfig exists
+      ansible.builtin.stat:
+        path: "{{ kubeconfig_path }}"
+      register: kubeconfig
+      failed_when: not kubeconfig.stat.exists
+
+    - name: Verify Kubernetes node readiness
+      ansible.builtin.command: kubectl --kubeconfig {{ kubeconfig_path }} get nodes
+      changed_when: false
+
+    - name: Verify Helm is installed
+      ansible.builtin.command: helm version --short
+      changed_when: false
+
+    - name: Verify no root app directory exists
+      ansible.builtin.stat:
+        path: /root/options-edge
+      register: root_app
+      failed_when: root_app.stat.exists

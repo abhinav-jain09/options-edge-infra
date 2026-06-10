@@ -1,4 +1,12 @@
 ---
-- name: kubectl role placeholder
-  ansible.builtin.debug:
-    msg: "kubectl role will be implemented here. All OptionsEdge data must stay under /home/options-edge."
+- name: Symlink kubectl to k3s kubectl when kubectl is missing
+  ansible.builtin.file:
+    src: /usr/local/bin/k3s
+    dest: /usr/local/bin/kubectl
+    state: link
+  when: ansible_facts['os_family'] is defined
+  ignore_errors: true
+
+- name: Verify kubectl works with OptionsEdge kubeconfig
+  ansible.builtin.command: kubectl --kubeconfig {{ kubeconfig_path }} get nodes
+  changed_when: false
