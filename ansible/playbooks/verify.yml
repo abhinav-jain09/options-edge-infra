@@ -1,0 +1,10 @@
+---
+- name: Verify OptionsEdge remote server
+  hosts: options_edge
+  become: true
+  tasks:
+    - name: Verify app home exists
+      ansible.builtin.stat:
+        path: /home/options-edge
+      register: app_home
+      failed_when: not app_home.stat.exists

@@ -1,0 +1,4 @@
+---
+- name: helm role placeholder
+  ansible.builtin.debug:
+    msg: "helm role will be implemented here. All OptionsEdge data must stay under /home/options-edge."

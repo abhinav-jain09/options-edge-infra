@@ -1,0 +1,4 @@
+---
+- name: docker role placeholder
+  ansible.builtin.debug:
+    msg: "docker role will be implemented here. All OptionsEdge data must stay under /home/options-edge."

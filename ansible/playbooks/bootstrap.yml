@@ -1,0 +1,12 @@
+---
+- name: Bootstrap OptionsEdge remote server
+  hosts: options_edge
+  become: true
+  vars:
+    options_edge_home: /home/options-edge
+  roles:
+    - common
+    - docker
+    - k3s
+    - kubectl
+    - helm

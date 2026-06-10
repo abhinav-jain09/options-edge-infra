@@ -1,0 +1,4 @@
+---
+- name: k3s role placeholder
+  ansible.builtin.debug:
+    msg: "k3s role will be implemented here. All OptionsEdge data must stay under /home/options-edge."

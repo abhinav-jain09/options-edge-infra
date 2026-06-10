@@ -1,0 +1,4 @@
+---
+- name: kubectl role placeholder
+  ansible.builtin.debug:
+    msg: "kubectl role will be implemented here. All OptionsEdge data must stay under /home/options-edge."
