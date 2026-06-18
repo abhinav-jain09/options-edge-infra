@@ -1,0 +1,23 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Apache Kafka Broker {{ kafka_node_id }} (KRaft) - {{ kafka_role_description }}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ kafka_user }}
+Group={{ kafka_group }}
+Environment="JAVA_HOME={{ kafka_java_home_effective }}"
+Environment="PATH={{ kafka_java_home_effective }}/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin"
+Environment="KAFKA_HEAP_OPTS={{ kafka_heap_opts }}"
+ExecStart={{ kafka_home }}/bin/kafka-server-start.sh {{ kafka_home }}/config/server-{{ kafka_node_id }}.properties
+Restart=on-failure
+RestartSec=10
+LimitNOFILE=100000
+KillSignal=SIGTERM
+TimeoutStopSec=180
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,7 @@
+{{ ansible_managed | comment }}
+mirrors:
+{% for reg in k3s_insecure_registries %}
+  "{{ reg }}":
+    endpoint:
+      - "http://{{ reg }}"
+{% endfor %}

@@ -1,0 +1,25 @@
+---
+# Join a node to an existing k3s cluster as a worker (agent).
+
+k3s_version: "v1.35.5+k3s1"
+k3s_server_url: "https://192.168.100.252:6443"
+k3s_data_dir: /home/options-edge/data/k3s
+
+# Node identity / scheduling.
+k3s_agent_node_name: "{{ inventory_hostname }}"
+k3s_agent_node_labels: []   # e.g. ["oe-role=failover"]
+k3s_agent_node_taints: []   # e.g. ["oe-role=failover:NoSchedule"]
+
+# Join credential. Provide k3s_agent_token via --extra-vars or ansible-vault for a
+# fresh join (NEVER commit it). Once joined, the token persists in the token file
+# and re-runs no longer need it. Fetch from the server with:
+#   su -c 'cat /home/options-edge/data/k3s/server/token'   (on the control-plane host)
+k3s_agent_token: ""
+k3s_agent_token_file: /etc/rancher/k3s/agent-token
+
+# Insecure (HTTP) registries the agent must be able to pull from.
+k3s_insecure_registries: []   # e.g. ["192.168.100.252:5000"]
+
+# Install the k3s-selinux policy RPM (required on enforcing RHEL/CentOS).
+k3s_install_selinux_rpm: true
+k3s_rancher_repo_baseurl: "https://rpm.rancher.io/k3s/stable/common/centos/9/noarch"

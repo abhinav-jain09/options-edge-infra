@@ -1,0 +1,85 @@
+---
+- name: Ensure /etc/rancher/k3s exists
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Install Rancher k3s-common repo (for k3s-selinux)
+  ansible.builtin.template:
+    src: rancher-k3s-common.repo.j2
+    dest: /etc/yum.repos.d/rancher-k3s-common.repo
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - ansible_facts['os_family'] == 'RedHat'
+    - k3s_install_selinux_rpm | bool
+
+- name: Configure insecure registries for containerd
+  ansible.builtin.template:
+    src: registries.yaml.j2
+    dest: /etc/rancher/k3s/registries.yaml
+    owner: root
+    group: root
+    mode: '0644'
+  when: k3s_insecure_registries | length > 0
+
+- name: Write k3s join token file
+  ansible.builtin.copy:
+    content: "{{ k3s_agent_token }}\n"
+    dest: "{{ k3s_agent_token_file }}"
+    owner: root
+    group: root
+    mode: '0600'
+  when: k3s_agent_token | length > 0
+  no_log: true
+
+- name: Check whether k3s is already installed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/k3s-agent.service
+  register: k3s_agent_unit
+
+- name: Ensure k3s data dir exists
+  ansible.builtin.file:
+    path: "{{ k3s_data_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: Assert a join token is available for a fresh install
+  ansible.builtin.assert:
+    that:
+      - (k3s_agent_token | length > 0) or k3s_agent_unit.stat.exists
+    fail_msg: >-
+      k3s-agent is not installed and no k3s_agent_token was provided.
+      Pass -e k3s_agent_token=<token> (from the control-plane server) for a fresh join.
+
+- name: Build k3s agent INSTALL_K3S_EXEC
+  ansible.builtin.set_fact:
+    k3s_agent_exec: >-
+      agent --node-name {{ k3s_agent_node_name }} --data-dir {{ k3s_data_dir }}
+      {% for l in k3s_agent_node_labels %}--node-label {{ l }} {% endfor %}
+      {% for t in k3s_agent_node_taints %}--node-taint {{ t }} {% endfor %}
+
+- name: Install and join k3s agent
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -sfL https://get.k3s.io | \
+      K3S_URL="{{ k3s_server_url }}" \
+      K3S_TOKEN_FILE="{{ k3s_agent_token_file }}" \
+      INSTALL_K3S_VERSION="{{ k3s_version }}" \
+      INSTALL_K3S_EXEC="{{ k3s_agent_exec | trim }}" \
+      sh -
+  args:
+    executable: /bin/bash
+  when: not k3s_agent_unit.stat.exists
+
+- name: Ensure k3s-agent is enabled and started
+  ansible.builtin.service:
+    name: k3s-agent
+    enabled: true
+    state: started
