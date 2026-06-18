@@ -1,0 +1,48 @@
+---
+# Verify Phase 1: controller is exposed on the network and the quorum is healthy.
+- name: Verify KRaft controller is network-exposed
+  hosts: primary_node
+  become: true
+  vars:
+    kafka_home: /opt/kafka/current
+    controller_routable_ip: "192.168.100.252"
+    controller_port: 9093
+  tasks:
+    - name: controller.quorum.voters points at the routable IP (not localhost)
+      ansible.builtin.command: grep -h '^controller.quorum.voters=' {{ kafka_home }}/config/server.properties
+      register: voters_line
+      changed_when: false
+      failed_when: "'localhost' in voters_line.stdout"
+
+    - name: CONTROLLER listener is bound to all interfaces
+      ansible.builtin.command: grep -h '^listeners=' {{ kafka_home }}/config/server.properties
+      register: listeners_line
+      changed_when: false
+      failed_when: "'CONTROLLER://0.0.0.0:' not in listeners_line.stdout"
+
+    - name: Controller port is listening on a routable address
+      ansible.builtin.shell: >-
+        ss -ltn | awk '{print $4}' | grep -E '(0\.0\.0\.0|\*|{{ controller_routable_ip }}):{{ controller_port }}$'
+      register: ss_check
+      changed_when: false
+
+    - name: Detect JAVA_HOME
+      ansible.builtin.command: bash -lc 'dirname "$(dirname "$(readlink -f "$(command -v java)")")"'
+      register: java_home
+      changed_when: false
+
+    - name: KRaft quorum reports a leader
+      ansible.builtin.command: >-
+        {{ kafka_home }}/bin/kafka-metadata-quorum.sh
+        --bootstrap-server {{ controller_routable_ip }}:9092 describe --status
+      environment:
+        JAVA_HOME: "{{ java_home.stdout }}"
+      register: quorum
+      changed_when: false
+      retries: 12
+      delay: 5
+      until: "'LeaderId:' in quorum.stdout"
+
+    - name: Show quorum status
+      ansible.builtin.debug:
+        msg: "{{ quorum.stdout_lines | select('match', '.*(LeaderId|CurrentVoters|CurrentObservers).*') | list }}"

@@ -1,0 +1,86 @@
+---
+# Phase 1 of the two-node Kafka/k3s failover build-out.
+#
+# Exposes the KRaft controller (broker 1) on the network so a remote broker
+# (node B / broker 4) can join. Currently broker 1's CONTROLLER listener and the
+# quorum-voter address are bound to `localhost`, unreachable from other hosts.
+#
+# Changes on primary 252:
+#   - controller.quorum.voters: 1@localhost:9093 -> 1@<routable-ip>:9093 (all 3 brokers)
+#   - broker 1 CONTROLLER listener: localhost:9093 -> 0.0.0.0:9093
+#
+# Rolling restart order is broker 1 FIRST (it rebinds to 0.0.0.0:9093, which is
+# still reachable via localhost so brokers 2/3 keep their controller link), then
+# brokers 2 and 3. Restarts go through the sanctioned options-edge-system-control
+# wrapper. Restarting the sole controller causes a brief (~10-30s) metadata stall.
+#
+# DISRUPTIVE: run during a maintenance window. Config edits keep .bak backups and
+# are idempotent (re-running after success is a no-op, no restarts).
+- name: "Phase 1 — expose KRaft controller on the network"
+  hosts: primary_node
+  become: true
+  vars:
+    kafka_config_dir: /opt/kafka/current/config
+    controller_routable_ip: "192.168.100.252"
+    controller_port: 9093
+    broker_ports: { '1': 9092, '2': 9094, '3': 9096 }
+    syscontrol: /usr/local/sbin/options-edge-system-control
+    new_voters: "1@192.168.100.252:9093"
+  tasks:
+    - name: Assert broker configs exist
+      ansible.builtin.stat:
+        path: "{{ kafka_config_dir }}/{{ item }}"
+      register: cfg_stat
+      failed_when: not cfg_stat.stat.exists
+      loop:
+        - server.properties
+        - server-2.properties
+        - server-3.properties
+
+    - name: Set controller.quorum.voters to routable IP on all brokers
+      ansible.builtin.replace:
+        path: "{{ kafka_config_dir }}/{{ item }}"
+        regexp: '^controller\.quorum\.voters=.*$'
+        replace: "controller.quorum.voters={{ new_voters }}"
+        backup: true
+      loop:
+        - server.properties
+        - server-2.properties
+        - server-3.properties
+      register: voters_change
+
+    - name: Bind broker 1 CONTROLLER listener to all interfaces
+      ansible.builtin.replace:
+        path: "{{ kafka_config_dir }}/server.properties"
+        regexp: 'CONTROLLER://localhost:{{ controller_port }}'
+        replace: "CONTROLLER://0.0.0.0:{{ controller_port }}"
+        backup: true
+      register: listener_change
+
+    - name: Determine whether a restart is needed
+      ansible.builtin.set_fact:
+        kafka_needs_restart: "{{ voters_change.changed or listener_change.changed }}"
+
+    # Rolling restart via the sanctioned wrapper. `restart kafka` cycles
+    # kafka.service (broker 1) then kafka-broker-2/3 IN ORDER. This is important:
+    # brokers 2/3 declare `Requires=kafka.service`, so restarting broker 1 stops
+    # them as a side effect — the wrapper then starts them again, so they reload
+    # the updated config and reconnect to the controller's new IP endpoint.
+    - name: Rolling restart of all Kafka brokers (wrapper handles order + Requires)
+      ansible.builtin.command: "{{ syscontrol }} restart kafka"
+      when: kafka_needs_restart | bool
+      changed_when: true
+
+    # Broker 1 recovers a large on-disk log on restart; allow generous time for
+    # the client listener to reopen.
+    - name: Wait for every broker/controller listener to come back
+      ansible.builtin.wait_for:
+        host: "{{ controller_routable_ip }}"
+        port: "{{ item }}"
+        timeout: 600
+      loop:
+        - "{{ controller_port }}"
+        - "{{ broker_ports['1'] }}"
+        - "{{ broker_ports['2'] }}"
+        - "{{ broker_ports['3'] }}"
+      when: kafka_needs_restart | bool
