@@ -1,0 +1,52 @@
+---
+# Apache Kafka (KRaft) broker installation for an OptionsEdge node.
+# Defaults describe a generic broker-only node that joins an existing cluster.
+# Per-node identity (node id, advertised host, controller quorum) is set in
+# host_vars / group_vars.
+
+kafka_version: "4.3.0"
+kafka_scala_version: "2.13"
+kafka_dist_base_url: "https://archive.apache.org/dist/kafka"
+kafka_dist_url: "{{ kafka_dist_base_url }}/{{ kafka_version }}/kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
+# Optional integrity check, e.g. "sha512:https://archive.apache.org/dist/kafka/4.3.0/kafka_2.13-4.3.0.tgz.sha512"
+# Empty string skips verification.
+kafka_dist_checksum: ""
+
+kafka_install_base: /opt/kafka
+kafka_version_dir: "{{ kafka_install_base }}/kafka_{{ kafka_scala_version }}-{{ kafka_version }}"
+kafka_home: "{{ kafka_install_base }}/current"
+
+kafka_user: kafka
+kafka_group: kafka
+kafka_user_home: /home/kafka
+
+# Existing cluster this broker joins.
+kafka_cluster_id: "of8tXNCLQouXqwkpADBPyg"
+
+# Per-broker identity (override per node).
+kafka_node_id: 4
+kafka_advertised_host: "{{ ansible_host | default(inventory_hostname) }}"
+kafka_broker_port: 9092
+kafka_controller_listener_name: CONTROLLER
+kafka_controller_quorum_voters: "1@192.168.100.252:9093"
+kafka_log_dirs: "{{ kafka_user_home }}/kraft-broker-{{ kafka_node_id }}-logs"
+kafka_heap_opts: "-Xms2g -Xmx2g"
+# Leave empty to auto-detect from the system `java`.
+kafka_java_home: ""
+kafka_role_description: "failover node"
+
+# 2-node best-effort durability target (stay-online): RF=2, minISR=1.
+kafka_default_replication_factor: 2
+kafka_min_insync_replicas: 1
+kafka_offsets_topic_rf: 2
+kafka_txn_state_rf: 2
+kafka_txn_state_min_isr: 1
+kafka_log_retention_hours: 336
+
+# Lifecycle flags.
+# Phase 0 stages the broker but does NOT start it: the controller (node 1)
+# is still bound to localhost and unreachable until Phase 1. Formatting and
+# starting happen once the controller is reachable on the network.
+kafka_format_storage: false
+kafka_broker_enabled: false
+kafka_broker_started: false

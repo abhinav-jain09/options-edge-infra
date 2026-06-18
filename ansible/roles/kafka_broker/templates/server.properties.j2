@@ -1,0 +1,27 @@
+# {{ ansible_managed }}
+# Kafka KRaft broker {{ kafka_node_id }} on {{ kafka_advertised_host }} ({{ kafka_role_description }}).
+# Broker-only node; controller quorum lives on node 1. Joins cluster {{ kafka_cluster_id }}.
+process.roles=broker
+node.id={{ kafka_node_id }}
+controller.quorum.voters={{ kafka_controller_quorum_voters }}
+listeners=PLAINTEXT://0.0.0.0:{{ kafka_broker_port }}
+advertised.listeners=PLAINTEXT://{{ kafka_advertised_host }}:{{ kafka_broker_port }}
+controller.listener.names={{ kafka_controller_listener_name }}
+listener.security.protocol.map={{ kafka_controller_listener_name }}:PLAINTEXT,PLAINTEXT:PLAINTEXT
+inter.broker.listener.name=PLAINTEXT
+log.dirs={{ kafka_log_dirs }}
+num.network.threads=3
+num.io.threads=8
+socket.send.buffer.bytes=102400
+socket.receive.buffer.bytes=102400
+socket.request.max.bytes=104857600
+num.partitions=1
+num.recovery.threads.per.data.dir=1
+default.replication.factor={{ kafka_default_replication_factor }}
+min.insync.replicas={{ kafka_min_insync_replicas }}
+offsets.topic.replication.factor={{ kafka_offsets_topic_rf }}
+transaction.state.log.replication.factor={{ kafka_txn_state_rf }}
+transaction.state.log.min.isr={{ kafka_txn_state_min_isr }}
+log.retention.hours={{ kafka_log_retention_hours }}
+log.segment.bytes=1073741824
+log.retention.check.interval.ms=300000

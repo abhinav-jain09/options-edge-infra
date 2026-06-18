@@ -1,0 +1,41 @@
+---
+# Verify the failover node B provisioning (Phase 0 expectations).
+- name: Verify OptionsEdge failover node B
+  hosts: failover_node
+  become: true
+  tasks:
+    - name: Kafka distribution is installed
+      ansible.builtin.stat:
+        path: /opt/kafka/current/bin/kafka-server-start.sh
+      register: kafka_bin
+      failed_when: not kafka_bin.stat.exists
+
+    - name: Broker config is present
+      ansible.builtin.stat:
+        path: /opt/kafka/current/config/server-4.properties
+      register: broker_cfg
+      failed_when: not broker_cfg.stat.exists
+
+    - name: Broker unit exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/kafka-broker-4.service
+      register: broker_unit
+      failed_when: not broker_unit.stat.exists
+
+    - name: Broker is staged (NOT started) in Phase 0
+      ansible.builtin.command: systemctl is-active kafka-broker-4
+      register: broker_active
+      changed_when: false
+      failed_when: broker_active.stdout == 'active'
+
+    - name: k3s-agent is active
+      ansible.builtin.command: systemctl is-active k3s-agent
+      register: k3s_agent_active
+      changed_when: false
+      failed_when: k3s_agent_active.stdout != 'active'
+
+    - name: Insecure registry config is present
+      ansible.builtin.stat:
+        path: /etc/rancher/k3s/registries.yaml
+      register: reg_cfg
+      failed_when: not reg_cfg.stat.exists
