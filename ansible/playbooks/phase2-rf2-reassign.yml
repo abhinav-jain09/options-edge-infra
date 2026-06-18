@@ -1,0 +1,87 @@
+---
+# Phase 2b/c — raise replication factor to 2 by adding broker 4 (node B) as a
+# second replica on each partition, so every partition has a copy on the other
+# physical machine. Leadership is preserved (current leader stays first replica).
+#
+# Pass the topic list via -e '{"rf2_topics":["a","b"]}' (validate one small topic
+# first). Replication is throttled to limit impact on the live feed; the --verify
+# step removes the throttle once movement completes.
+#
+# DISRUPTIVE-ISH: moves data across the 252<->56 link and adds disk/network load.
+- name: "Phase 2 — RF=2 reassignment (add broker 4 as a replica)"
+  hosts: primary_node
+  become: true
+  vars:
+    bootstrap: "192.168.100.252:9092"
+    kafka_bin: /opt/kafka/current/bin
+    add_broker: 4
+    throttle_bytes_per_sec: 50000000   # 50 MB/s ceiling for inter-broker replication
+    rf2_topics: []
+    verify_retries: 240
+    verify_delay: 15
+  tasks:
+    - name: Require an explicit topic list
+      ansible.builtin.assert:
+        that:
+          - rf2_topics | length > 0
+        fail_msg: "Pass rf2_topics, e.g. -e '{\"rf2_topics\":[\"underlying.spx.price\"]}'"
+
+    - name: Detect JAVA_HOME
+      ansible.builtin.command: bash -lc 'dirname "$(dirname "$(readlink -f "$(command -v java)")")"'
+      register: java_home
+      changed_when: false
+
+    - name: Copy reassignment generator
+      ansible.builtin.copy:
+        src: ../../scripts/kafka-rf2-add-broker.py
+        dest: /tmp/kafka-rf2-add-broker.py
+        mode: '0755'
+
+    - name: Generate reassignment plan
+      ansible.builtin.command: /usr/bin/env python3 /tmp/kafka-rf2-add-broker.py {{ rf2_topics | join(' ') }}
+      environment:
+        BOOTSTRAP: "{{ bootstrap }}"
+        KAFKA_BIN: "{{ kafka_bin }}"
+        ADD_BROKER: "{{ add_broker | string }}"
+      register: reassign_plan
+      changed_when: false
+
+    - name: Write reassignment JSON
+      ansible.builtin.copy:
+        content: "{{ reassign_plan.stdout }}"
+        dest: /tmp/rf2-reassign.json
+        mode: '0644'
+
+    - name: Plan summary
+      ansible.builtin.debug:
+        msg: "Reassigning {{ (reassign_plan.stdout | from_json).partitions | length }} partitions across topics: {{ rf2_topics | join(', ') }}"
+
+    - name: Execute reassignment (throttled)
+      ansible.builtin.command: >-
+        {{ kafka_bin }}/kafka-reassign-partitions.sh
+        --bootstrap-server {{ bootstrap }}
+        --reassignment-json-file /tmp/rf2-reassign.json
+        --throttle {{ throttle_bytes_per_sec }}
+        --execute
+      environment:
+        JAVA_HOME: "{{ java_home.stdout }}"
+      register: reassign_exec
+      changed_when: true
+
+    - name: Wait for reassignment to complete (removes throttle when done)
+      ansible.builtin.command: >-
+        {{ kafka_bin }}/kafka-reassign-partitions.sh
+        --bootstrap-server {{ bootstrap }}
+        --reassignment-json-file /tmp/rf2-reassign.json
+        --verify
+      environment:
+        JAVA_HOME: "{{ java_home.stdout }}"
+      register: reassign_verify
+      changed_when: false
+      retries: "{{ verify_retries }}"
+      delay: "{{ verify_delay }}"
+      until: "'is still in progress' not in reassign_verify.stdout"
+
+    - name: Reassignment result
+      ansible.builtin.debug:
+        msg: "{{ reassign_verify.stdout_lines | reject('search', 'Throttle') | list }}"

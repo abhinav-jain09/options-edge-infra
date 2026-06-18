@@ -1,0 +1,15 @@
+---
+# Phase 2a — activate failover broker 4 on node B.
+# Formats KRaft storage (idempotent, --ignore-formatted) and starts the broker so
+# it joins the existing cluster via the now-network-reachable controller (Phase 1).
+# Additive: starting an extra broker does not disrupt existing brokers; topics stay
+# RF=1 until the reassignment step (Phase 2b/c).
+- name: "Phase 2a — start failover broker 4"
+  hosts: failover_node
+  become: true
+  vars:
+    kafka_format_storage: true
+    kafka_broker_enabled: true
+    kafka_broker_started: true
+  roles:
+    - kafka_broker
