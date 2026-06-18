@@ -1,0 +1,23 @@
+---
+# Node B — Kafka failover broker + k3s failover worker (192.168.100.56).
+
+# Kafka broker 4 (joins existing cluster of8tXNCLQouXqwkpADBPyg).
+kafka_node_id: 4
+kafka_advertised_host: "192.168.100.56"
+kafka_controller_quorum_voters: "1@192.168.100.252:9093"
+kafka_role_description: "failover node B"
+
+# Phase 0: stage only. The controller (node 1) is still on localhost and not
+# reachable from this node until Phase 1, so do not format/start yet.
+kafka_format_storage: false
+kafka_broker_enabled: false
+kafka_broker_started: false
+
+# k3s failover worker.
+k3s_agent_node_name: "oe-failover-56"
+k3s_agent_node_labels:
+  - "oe-role=failover"
+k3s_agent_node_taints:
+  - "oe-role=failover:NoSchedule"
+k3s_insecure_registries:
+  - "192.168.100.252:5000"

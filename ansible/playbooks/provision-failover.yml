@@ -1,0 +1,14 @@
+---
+# Phase 0 of the two-node Kafka/k3s failover build-out.
+# Provisions OptionsEdge failover node B (192.168.100.56):
+#   - installs Apache Kafka (KRaft) broker 4, STAGED (not started until Phase 1)
+#   - joins the node to the existing k3s cluster as a tainted failover worker
+#
+# Safe & additive: the staged broker is not started and the worker is tainted
+# NoSchedule, so the running primary cluster is untouched.
+- name: Provision OptionsEdge failover node B (Kafka broker + k3s worker)
+  hosts: failover_node
+  become: true
+  roles:
+    - kafka_broker
+    - k3s_agent

@@ -1,0 +1,126 @@
+---
+- name: Ensure kafka group exists
+  ansible.builtin.group:
+    name: "{{ kafka_group }}"
+    system: true
+
+- name: Ensure kafka user exists
+  ansible.builtin.user:
+    name: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    system: true
+    home: "{{ kafka_user_home }}"
+    create_home: true
+    shell: /sbin/nologin
+
+- name: Ensure Kafka install base and data dirs exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: '0755'
+  loop:
+    - "{{ kafka_install_base }}"
+    - "{{ kafka_log_dirs }}"
+
+- name: Detect JAVA_HOME when not provided
+  ansible.builtin.command: bash -c 'dirname "$(dirname "$(readlink -f "$(command -v java)")")"'
+  register: kafka_java_detect
+  changed_when: false
+  when: kafka_java_home | length == 0
+
+- name: Set effective JAVA_HOME
+  ansible.builtin.set_fact:
+    kafka_java_home_effective: "{{ kafka_java_home if (kafka_java_home | length > 0) else kafka_java_detect.stdout }}"
+
+- name: Fail when JAVA_HOME could not be resolved
+  ansible.builtin.assert:
+    that:
+      - kafka_java_home_effective | length > 0
+    fail_msg: "Could not resolve JAVA_HOME; install a JDK (>=17) or set kafka_java_home"
+
+- name: Check whether the Kafka distribution is already installed
+  ansible.builtin.stat:
+    path: "{{ kafka_version_dir }}/bin/kafka-server-start.sh"
+  register: kafka_dist_present
+
+- name: Download Kafka distribution
+  ansible.builtin.get_url:
+    url: "{{ kafka_dist_url }}"
+    dest: "/tmp/kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
+    checksum: "{{ kafka_dist_checksum or omit }}"
+    mode: '0644'
+  when: not kafka_dist_present.stat.exists
+
+- name: Extract Kafka distribution
+  ansible.builtin.unarchive:
+    src: "/tmp/kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
+    dest: "{{ kafka_install_base }}"
+    remote_src: true
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    creates: "{{ kafka_version_dir }}/bin/kafka-server-start.sh"
+  register: kafka_extracted
+
+- name: Remove downloaded archive
+  ansible.builtin.file:
+    path: "/tmp/kafka_{{ kafka_scala_version }}-{{ kafka_version }}.tgz"
+    state: absent
+  when: not kafka_dist_present.stat.exists
+
+- name: Point current symlink at installed version
+  ansible.builtin.file:
+    src: "{{ kafka_version_dir }}"
+    dest: "{{ kafka_home }}"
+    state: link
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+
+- name: Ensure ownership of installed version (only when freshly extracted)
+  ansible.builtin.file:
+    path: "{{ kafka_version_dir }}"
+    state: directory
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    recurse: true
+  when: kafka_extracted.changed
+
+- name: Render broker server.properties
+  ansible.builtin.template:
+    src: server.properties.j2
+    dest: "{{ kafka_home }}/config/server-{{ kafka_node_id }}.properties"
+    owner: "{{ kafka_user }}"
+    group: "{{ kafka_group }}"
+    mode: '0644'
+
+- name: Install broker systemd unit
+  ansible.builtin.template:
+    src: kafka-broker.service.j2
+    dest: "/etc/systemd/system/kafka-broker-{{ kafka_node_id }}.service"
+    owner: root
+    group: root
+    mode: '0644'
+  notify: Reload systemd
+
+- name: Flush handlers so the unit is registered before lifecycle changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Format KRaft storage for this broker
+  ansible.builtin.command: >-
+    {{ kafka_home }}/bin/kafka-storage.sh format
+    --cluster-id {{ kafka_cluster_id }}
+    --config {{ kafka_home }}/config/server-{{ kafka_node_id }}.properties
+    --ignore-formatted
+  become_user: "{{ kafka_user }}"
+  environment:
+    JAVA_HOME: "{{ kafka_java_home_effective }}"
+  register: kafka_storage_format
+  changed_when: "'Formatting' in kafka_storage_format.stdout"
+  when: kafka_format_storage | bool
+
+- name: Set broker service lifecycle
+  ansible.builtin.systemd:
+    name: "kafka-broker-{{ kafka_node_id }}.service"
+    enabled: "{{ kafka_broker_enabled | bool }}"
+    state: "{{ 'started' if (kafka_broker_started | bool) else omit }}"
