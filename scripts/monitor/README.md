@@ -38,12 +38,20 @@ is unavailable.
   freeze persists (`SPOT_FRESHNESS_DEDUPE_SEC`, default 300).
 - Posts `✅ PROD SPOT RECOVERED` when age drops back under threshold.
 - Silent no-op if the SSH gather fails — never false-alarms on our own blip.
+- **Post-open grace (Codex P2 fix):** during the first 180s after 09:30 ET the
+  gauge still reflects the overnight age (hours), so the very first sample
+  after the bell would always exceed the threshold. In the grace window the
+  script logs the observation and exits without alerting *or* touching state
+  (so no spurious `PROD SPOT RECOVERED` can fire mid-grace either). Tunable
+  via `SPOT_FRESHNESS_OPEN_GRACE_SEC` (default 180, set 0 to disable).
 
 ### Environment overrides (for local testing)
 
 - `SPOT_FRESHNESS_FORCE=1` — bypass the market-hours gate.
 - `SPOT_FRESHNESS_THRESHOLD_SEC` — override the 90s threshold.
 - `SPOT_FRESHNESS_DEDUPE_SEC` — override the 300s dedupe window.
+- `SPOT_FRESHNESS_OPEN_GRACE_SEC` — override the 180s post-open grace period
+  (set to `0` to disable the grace entirely, e.g. in a test).
 
 ## Install (operator)
 
@@ -80,3 +88,25 @@ SPOT_FRESHNESS_FORCE=1 SPOT_FRESHNESS_THRESHOLD_SEC=0 \
 A single `🚨 PROD SPOT FROZEN` embed should appear in the prod Discord channel;
 run it again immediately and it should be deduped; run it with the threshold
 restored and you should see the `✅ PROD SPOT RECOVERED` post.
+
+## Verify the post-open grace period (Codex P2)
+
+The grace window should suppress alerts for the first 180s after 09:30 ET even
+when the gauge exceeds the threshold. To confirm both branches without waiting
+for the bell:
+
+```bash
+# 1. Grace ACTIVE — alert must NOT fire even at threshold 0. Expect a log line
+#    "open-grace age=... — skip alert" and no Discord post.
+SPOT_FRESHNESS_FORCE=1 SPOT_FRESHNESS_THRESHOLD_SEC=0 \
+  SPOT_FRESHNESS_OPEN_GRACE_SEC=86400 \
+  /opt/homebrew/bin/bash ~/oe-ops/prod-spot-freshness-watch.sh
+
+# 2. Grace DISABLED — same conditions, alert SHOULD fire.
+SPOT_FRESHNESS_FORCE=1 SPOT_FRESHNESS_THRESHOLD_SEC=0 \
+  SPOT_FRESHNESS_OPEN_GRACE_SEC=0 \
+  /opt/homebrew/bin/bash ~/oe-ops/prod-spot-freshness-watch.sh
+```
+
+Step 1 proves the grace suppresses the noisy 09:30 first-tick alert; step 2
+proves the alert path itself still works when grace is disabled.

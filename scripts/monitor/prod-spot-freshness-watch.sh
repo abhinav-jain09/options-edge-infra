@@ -28,6 +28,10 @@ PW=$(cat "$OPS/.prod-ssh-pw" 2>/dev/null)
 STATE="$OPS/.spot-freshness-prod.state"       # age=<sec>\nfrozen_since=<epoch>\nalerted=<0|1>
 THRESHOLD_SEC=${SPOT_FRESHNESS_THRESHOLD_SEC:-90}
 DEDUPE_WINDOW_SEC=${SPOT_FRESHNESS_DEDUPE_SEC:-300}
+# Grace period after 09:30 ET open: the gauge reflects the overnight age (hours)
+# for the first tick after the bell, so the first sample would always trip the
+# threshold. Suppress alerts during this window. Override for tests.
+OPEN_GRACE_SEC=${SPOT_FRESHNESS_OPEN_GRACE_SEC:-180}
 NOW=$(date +%s)
 
 # Market-hours gate: Mon-Fri 09:30-16:00 ET (SPX regular session). Force with
@@ -35,6 +39,17 @@ NOW=$(date +%s)
 read DOW HHMM <<< "$(TZ=America/New_York date '+%u %H%M')"
 if [ -z "${SPOT_FRESHNESS_FORCE:-}" ]; then
   { [ "$DOW" -le 5 ] && [ "$HHMM" -ge 0930 ] && [ "$HHMM" -le 1600 ]; } || exit 0
+fi
+
+# Seconds since today's 09:30 ET open. Used to suppress the false-positive that
+# would otherwise fire on the first tick after the bell (see OPEN_GRACE_SEC).
+OPEN_EPOCH=$(TZ=America/New_York date -j -f '%Y-%m-%d %H:%M:%S' \
+  "$(TZ=America/New_York date '+%Y-%m-%d') 09:30:00" '+%s' 2>/dev/null || echo 0)
+SECONDS_SINCE_OPEN=$(( NOW - OPEN_EPOCH ))
+IN_OPEN_GRACE=0
+if [ "$OPEN_EPOCH" -gt 0 ] && [ "$SECONDS_SINCE_OPEN" -ge 0 ] \
+   && [ "$SECONDS_SINCE_OPEN" -lt "$OPEN_GRACE_SEC" ]; then
+  IN_OPEN_GRACE=1
 fi
 
 # One SSH: exec into the feed-gateway pod and grep the metric off /metrics. Falls back
@@ -86,6 +101,14 @@ post(){
 
 FROZEN_SINCE=$PREV_FROZEN_SINCE
 ALERTED_AT=$PREV_ALERTED_AT
+
+if [ "$IN_OPEN_GRACE" = "1" ]; then
+  # In the post-open grace window the gauge still reflects the overnight age;
+  # log the observation but do not alert, do not seed frozen_since, and do not
+  # let a recovery post fire from stale state (we skip touching state entirely).
+  echo "$(date '+%FT%T') open-grace age=${AGE}s seconds_since_open=${SECONDS_SINCE_OPEN}s (< ${OPEN_GRACE_SEC}s) — skip alert"
+  exit 0
+fi
 
 if [ "${AGE%.*}" -ge "$THRESHOLD_SEC" ] 2>/dev/null; then
   # frozen
