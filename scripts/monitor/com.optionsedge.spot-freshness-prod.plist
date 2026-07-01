@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>com.optionsedge.spot-freshness-prod</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/bash</string>
+    <string>/Users/abhinav/oe-ops/prod-spot-freshness-watch.sh</string>
+  </array>
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/abhinav/oe-ops/spot-freshness-prod.log</string>
+  <key>StandardErrorPath</key><string>/Users/abhinav/oe-ops/spot-freshness-prod.log</string>
+</dict></plist>
